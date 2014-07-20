@@ -45,12 +45,12 @@ Omega -> Omega_v : [V] : Omega[v] -> [T x T] similarity matrix
 import numpy as np
 
 class Reg_MVMT(object):
-    def __init__(self, task_views, tasks, views):
+    def __init__(self, task_views, task_labels, views):
         self.task_views = task_views # {task_key : view_keys}
-        self.tasks = tasks # {task_key : example_values}
+        self.tasks = task_labels # {task_key : sample_values}
         self.views = views # {view_key : feature_matrix}
         
-    def run_mvmt(self, iterations, lambda_var, mu, gamma):
+    def run_mvmt(self, iterations, lambda_var, mu, gamma, epsilon):
         T = len(self.tasks.keys())
         V = len(self.views.keys())
         D = sum([x.shape[1] for x in self.views.values()])
@@ -87,7 +87,7 @@ class Reg_MVMT(object):
             C = {}
             E = {}
 
-            for (t, v) in range(T), range(V):
+            for (t, v) in [(x, self.views.keys()) for x in self.tasks.keys()]:
                 # construct A[t, v]
                 A[t, v] = lambda_var + (mu * (V - 1) * U[t, v].T * U[t, v]) + \
                           ((X[t, v].T * X[t, v]) / (V ** 2))
@@ -96,40 +96,40 @@ class Reg_MVMT(object):
                 E[t, v] = (X[t, v].T * y[t]) / V
 
                 # construct B[t, v, v']
-                for v` in range(V):
-                    if v != v`:
-                        B[t, v, v`] = ((X[t, v].T * X[t, v`]) / (V ** 2)) - \
-                                      (mu * U[t, v].T * U[t, v]))
+                for v2 in range(V):
+                    if v != v2:
+                        B[t, v, v2] = ((X[t, v].T * X[t, v2]) / (V ** 2)) - \
+                                      (mu * U[t, v].T * U[t, v])
 
                 # construct C[t', v]
-                for t` in range(T):
-                    if t != t`:
+                for t2 in range(T):
+                    if t != t2:
                         I_Dv = np.matrix(np.identity(self.views[v].shape[1]))
-                        C[t`, v] = gamma * Omega[v][t, t`] * I_Dv
+                        C[t2, v] = gamma * Omega[v][t, t2] * I_Dv
 
             # construct L
-            L = np.zeros((task_count * view_count, task_count * view_count))
+            L = np.zeros((T * V, T * V))
             i_offset = 0
             j_offset = 0
             for t in range(T):
-                for t` in range(T):
-                    if t == t`:
+                for t2 in range(T):
+                    if t == t2:
                         for v in range(V):
-                            for v` in range(V):
-                                if v == v`:
+                            for v2 in range(V):
+                                if v == v2:
                                     for i in range(A[t, v].shape[0]):
                                         for j in range(A[t, v].shape[1]):
                                             L[i + i_offset, j + j_offset] = A[t, v][i, j]
                                     j_offset += A[t, v].shape[1]
                                 else:
-                                    for i in range(B[t, v, v`].shape[0]):
-                                        for j in range(B[t, v, v`].shape[1]):
-                                            L[i + i_offset, j + j_offset] = B[t, v, v`][i, j]
-                                    j_offset += B[t, v, v`].shape[1]
+                                    for i in range(B[t, v, v2].shape[0]):
+                                        for j in range(B[t, v, v2].shape[1]):
+                                            L[i + i_offset, j + j_offset] = B[t, v, v2][i, j]
+                                    j_offset += B[t, v, v2].shape[1]
                     else:
                         for v in range(V):
-                            for v` in range(V):
-                                if v == v`:
+                            for v2 in range(V):
+                                if v == v2:
                                     for i in range(C[t, v].shape[0]):
                                         for j in range(C[t, v].shape[1]):
                                             L[i + i_offset, j + j_offset] = C[t, v][i, j]
@@ -162,7 +162,14 @@ class Reg_MVMT(object):
             for v in range(V):
                 Omega[v] = ((W_v.T * W_v) ** (1 / 2)) / (sum(np.diag((W_v.T * W_v) ** (1 / 2)).tolist()))
 
-            if (() < epsilson) && (() < epsilson):
+            is_finished = False
+            if (np.linalg.norm(W - W0, 1) < epsilon):
+                is_finished = True
+                for v in range(V):
+                    if (np.linalg.norm(W - W0, 1) >= epsilon):
+                        is_finished = False
+                        break
+            if is_finished:
                 break
             else:
                 W0 = W
@@ -171,4 +178,4 @@ class Reg_MVMT(object):
 
         return (W, Omega)
 
-
+        
