@@ -1,118 +1,174 @@
 '''
 regMVMT
 
+var_name -> notation : dimension : use/discription
+or
+var_name -> use/discription
+
 Define:
 T -> # of Tasks
 V -> # of Views
-v -> specific view in [1 : V]
-t -> specific task in [1 : T]
-N - set of labeled data
-M - set of unlabeled data
-D - set of examples in V views
+t -> task index
+v -> view index
+N -> # of labeled samples
+M -> # of unlabeled samples
+D -> # of features
 
 Input:
-{y_t}_t=1_T -> labeled example column vector -> [0:n_t] -> {1, -1}
-{X_t}_t=1_T -> labeled feature matrix -> [0:n_t, D_v]
-{U_t}_v=1_V -> weights -> [u_1_v, ..., u_T_v] -> [0:D_v, 0:T]
-lambda - regularization parameters
-mu - coupling parameter
-gamma - regularization parameter to penalize difference in view mapping function
+y -> y_t : [T] : y[t] -> [N_t x 1] label column vector
+X -> X_t : [T] : X[t] -> [N_v x D_v] labeled feature matrix
+U -> U_t : [T] : U[t] -> [M_v x D_v] unlabeled feature matrix
+lambda ->  
+mu -> 
+iterations -> N_it
+epsilson -> 
 
 Algorithm:
-X_t_v - feature matrix N_t x D_v for labeled examples
-U_t_v - feature matrix M_t x D_v for unlabeled examples
-y_t -  example labels vector N_t x 1 {1, -1}
-I_d - indicator matrix T x V,
-    I_d(t, v) = 0 if v is missing from t
-    otherwise I_d(t, v) = 1
-f_t_v - learning function maps D_v -> {1, -1}
-w_t_v - weight
-A_tv -
-B_vv'_t -
-C_t'v - 
-Omega - similarity matrix T x T between tasks
-L - matrix T*D x T*D
-R - column vector of E_1,1 to E_T,V
+W0 -> W_0 :
+Omega0 -> Omega_v0 : [V] : Omega0[v] -> 
+I -> I_d : [T x V] : I[t, v] -> 1 for labeled samples and 0 for unlabeled samples
+A -> A_tv -> [T x V] : A[t, v] -> [D_v x D_v] matrix
+B -> B_vv'_t -> [T x V] : B[t, v, v'] -> [D_v x D_v] matrix
+C -> C_tv : [T x V] : C[t', v] = [D_v x D_v] matrix
+E -> E_t_v : [T x V] : E[t, v] -> [D_v x 1] column matrix
+L -> L : [TD x TD] : L[i, j] -> value
+R -> R : [TD x 1] column matrix
+w -> w_t_v : [T x V] : w[t, v] -> [D_v x 1] column vector of weights
+w_t -> w_t : [D x 1] : [D x 1] column vector of weights
 
 Output:
-{W_t}_t=1_T - matrix where column t_th = w_t
-{Omega_v}_v=1_V - task similarity matrix
+W -> W_t : [D x T] : weights matrix
+Omega -> Omega_v : [V] : Omega[v] -> [T x T] similarity matrix
+
 '''
 
 import numpy as np
 
 class Reg_MVMT(object):
-    def __init__(self, tasks, views):
+    def __init__(self, task_views, tasks, views):
+        self.task_views = task_views # {task_key : view_keys}
         self.tasks = tasks # {task_key : example_values}
         self.views = views # {view_key : feature_matrix}
-
-    def run_mvmt(self, iterations, lambda_parameter, mu, gamma):
-        task_count = len(self.tasks.keys()) # V
-        view_count = len(self.views.keys()) # V
+        
+    def run_mvmt(self, iterations, lambda_var, mu, gamma):
+        T = len(self.tasks.keys())
+        V = len(self.views.keys())
+        D = sum([x.shape[1] for x in self.views.values()])
+        y = {}
+        X = {}
+        U = {}
+        I = np.matrix(np.ones((T, V)))
+        L = np.matrix((T * V, T * V))
+        W = np.matrix(np.zeros((D, T)))
         Omega = {}
-        W = {}
-        labeled_feature_matrices = {} # X {view_key : labeled_feature_matrix}
-        unlabeled_feature_matrices = {} # U {view_key : unlabeled_feature_matrix}
-        weights = {} # w_t_v {(task_key, view_key) : weight}
-        examples = {} # {example_key : labeled or unlabeled}
-        for example_index in len(self.tasks[1]):
-            if self.tasks[1][example_index] != 0.0:
-                examples[example_index] = 'labeled'
+
+        # build y, X, U, and I
+        for (t, v) in [(x, self.views.keys()) for x in self.tasks.keys()]:
+            if v in self.task_views[t]:
+                I[t, v] = 1
+                X[t, v] = self.views[v]
             else:
-                examples[example_index] = 'unlabeled'
-        for view_key in self.views.keys():
-            labeled_feature_matrix = []
-            unlabeled_feature_matrix = []
-            for example_index in len(self.views[view_key].shape[0]):
-                if examples[example_index] == 'labeled':
-                    labeled_feature_matrix.append(self.views[view_key][example_index].tolist()[0])
-                if examples[example_index] == 'unlabeled':
-                    unlabeled_feature_matrix.append(self.views[view_key][example_index].tolist()[0])
-            labeled_feature_matrices[view_key] = np.matrix(labeled_feature_matrix)
-            unlabeled_feature_matrices[view_key] = np.matrix(unlabeled_feature_matrix)
-        
+                I[t, v] = 0
+                U[t, v] = self.views[v]
+            y[t] = np.matrix(self.tasks[t]).T
+
+        # initialize W0
+        W0 = np.matrix(np.zeros((D, T)))
+
+        # initialize Omega0
+        Omega0 = {}
+        for v in range(V):
+            I_T = np.matrix(np.identity(T))
+            Omega0[v] = (1 / T) * I_T
+
         for iteration in range(iterations):
-            A_tv = {}
-            E_tv = {} # E_tv {(task_key, view_key)}
-            B_VV_T = {}
-            
-            for (task_key, view_key) in [(t, self.views.keys()[v - 1]) for v in [t for t in self.tasks.keys()]]:
-                # construct A_tv
-                labeled_feature_matrix = labeled_feature_matrices[view_key]
-                unlabeled_feature_matrix = unlabeled_feature_matrices[view_key]
-                A_tv = lambda_parameter + (mu * (view_count - 1) * unlabeled_feature_matrix.T * unlabeled_feature_matrix) + \
-                        ((labeled_feature_matrix.T * labeled_feature_matrix) / (view_count ** 2))
-                
-                # construct E_tv
-                labels = np.matrix([x for x in self.tasks[task_key] if x != 0.0]).T
-                E_tv[(task_key, view_key)] = (labeled_feature_matrix.T * labels) / view_count
-                
-                # construct B_vv'_t
-                B_vv_t = {} # B_vv'_t {(view_key, view_key_other) : feature matrix}
-                for view_key_other in [x for x in self.views.keys() if x != view_key]:
-                    labeled_feature_matrix_other = labeled_feature_matrices[view_key_other]
-                    unlabeled_feature_matrix_other = unlabeled_feature_matrices[view_key_other]
-                    B_vv_t[(view_key, view_key_other)] = ((labeled_feature_matrix.T * labeled_feature_matrix_other) / (view_count ** 2)) - \
-                                                            (mu * unlabeled_feature_matrix.T * unlabeled_feature_matrix_other)
-                
-                # construct C_t'v
-                C_tv = gamma * c * I_Dv
-        
-        # construct L
-        L = np.zeros((task_count * view_count, task_count * view_count))
-        for i in range(task_count * view_count):
-            for j in ((task_count * view_count) / 2):
-                if i == j:
-                    L[i, j] = 
-        
-        # construct R
-        R = []
-        for task_key in self.tasks.keys():
-            for view_key in self.views.keys():
-                R.extend(E_tv[(task_key, view_key)].T.tolist()[0])
-        R = np.matrix(R).T
-        
-        # compute W
-        W = L.I * R
-        
-        # update Omega_v
+            A = {}
+            B = {}
+            C = {}
+            E = {}
+
+            for (t, v) in range(T), range(V):
+                # construct A[t, v]
+                A[t, v] = lambda_var + (mu * (V - 1) * U[t, v].T * U[t, v]) + \
+                          ((X[t, v].T * X[t, v]) / (V ** 2))
+
+                # construct E[t, v]
+                E[t, v] = (X[t, v].T * y[t]) / V
+
+                # construct B[t, v, v']
+                for v` in range(V):
+                    if v != v`:
+                        B[t, v, v`] = ((X[t, v].T * X[t, v`]) / (V ** 2)) - \
+                                      (mu * U[t, v].T * U[t, v]))
+
+                # construct C[t', v]
+                for t` in range(T):
+                    if t != t`:
+                        I_Dv = np.matrix(np.identity(self.views[v].shape[1]))
+                        C[t`, v] = gamma * Omega[v][t, t`] * I_Dv
+
+            # construct L
+            L = np.zeros((task_count * view_count, task_count * view_count))
+            i_offset = 0
+            j_offset = 0
+            for t in range(T):
+                for t` in range(T):
+                    if t == t`:
+                        for v in range(V):
+                            for v` in range(V):
+                                if v == v`:
+                                    for i in range(A[t, v].shape[0]):
+                                        for j in range(A[t, v].shape[1]):
+                                            L[i + i_offset, j + j_offset] = A[t, v][i, j]
+                                    j_offset += A[t, v].shape[1]
+                                else:
+                                    for i in range(B[t, v, v`].shape[0]):
+                                        for j in range(B[t, v, v`].shape[1]):
+                                            L[i + i_offset, j + j_offset] = B[t, v, v`][i, j]
+                                    j_offset += B[t, v, v`].shape[1]
+                    else:
+                        for v in range(V):
+                            for v` in range(V):
+                                if v == v`:
+                                    for i in range(C[t, v].shape[0]):
+                                        for j in range(C[t, v].shape[1]):
+                                            L[i + i_offset, j + j_offset] = C[t, v][i, j]
+                                    j_offset += C[t, v].shape[1]
+                                else:
+                                    for i in range(C[t, v].shape[0]):
+                                        for j in range(C[t, v].shape[1]):
+                                            L[i + i_offset, j + j_offset] = 0
+                                    j_offset += C[t, v].shape[1]
+                i_offset += B[t, 1, 2].shape[0]
+
+            # construct R -> column vector
+            R = []
+            for t in range(T):
+                for v in range(V):
+                    R.extend(E[(t, v)].T.tolist()[0])
+            R = np.matrix(R).T
+
+            # compute W
+            W = L.I * R
+
+            # construct W_v
+            W_v = []
+            for t in range(T):
+                for v in range(V):
+                    W_v.extend(W[(t, v)].T.tolist()[0])
+            W_v = np.matrix(W_v).T
+
+            # update Omega[v]
+            for v in range(V):
+                Omega[v] = ((W_v.T * W_v) ** (1 / 2)) / (sum(np.diag((W_v.T * W_v) ** (1 / 2)).tolist()))
+
+            if (() < epsilson) && (() < epsilson):
+                break
+            else:
+                W0 = W
+                for v in range(V):
+                    Omega0[v] = Omega[v]
+
+        return (W, Omega)
+
+
