@@ -44,7 +44,7 @@ class MVMT_Job(MRJob):
         self.views = views # {view_key : feature_matrix}
 
     '''
-
+    command line arguments
     '''
     def configure_options(self):
         super(MVMT_Job, self).configure_options()
@@ -57,9 +57,6 @@ class MVMT_Job(MRJob):
             '-e', '--tasks', type='int', default=1,
             help=('The number of tasks. Required.'))
 
-    '''
-
-    '''
     def read_data(self, files):
         views = []
         for file_name in files:
@@ -69,8 +66,12 @@ class MVMT_Job(MRJob):
             views.append((labels, data))
         return views
 
+    
     '''
-
+    map: 
+    (task_views, files)
+    ->*
+    ((task_key, view_key), ((sample_values, feature_matrix), (W, Omega, W0, Omega0)))
     '''
     def map_views(self):
         files = self.views.values()
@@ -83,7 +84,10 @@ class MVMT_Job(MRJob):
                 yield(label, (view, features))
 
     '''
-
+    map:
+    ((task_key, view_key), ((sample_values, feature_matrix), (W, Omega, W0, Omega0)))
+    ->
+    ('mvmt', ((task_key, view_key), ((sample_values, feature_matrix), (W, Omega, W0, Omega0), (A, E, B, C)))
     '''
     def map_construct(self, (task_key, view_key), ((sample_values, feature_matrix), (T, V, D, W, Omega, W0, Omega0, W_t))):
         t = task_key
@@ -116,7 +120,10 @@ class MVMT_Job(MRJob):
         yield('mvmt', ((sample_values, feature_matrix), (T, V, D, W, Omega, W0, Omega0, W_t), (A, E, B, C)))
 
     '''
-
+    reduce:
+    ('mvmt', ((task_key, view_key), ((sample_values, feature_matrix), (W, Omega, W0, Omega0), (A, E, B, C)))
+    ->*
+    ((task_key, view_key), ((sample_values, feature_matrix), (W, Omega, W0, Omega0)))
     '''
     def reduce_construct(self, name_key, ((sample_values, feature_matrix), (T, V, D, W, Omega, W0, Omega0, W_t), (A, E, B, C))):
         # construct L
@@ -179,13 +186,19 @@ class MVMT_Job(MRJob):
                 yield((t, v), ((sample_values, feature_matrix), (T, V, D, W, Omega, W0, Omega0, W_t)))
 
     '''
-
+    map:
+    ((task_key, view_key), ((sample_values, feature_matrix), (W, Omega, W0, Omega0)))
+    ->
+    ('mvmt', (W, Omega))
     '''
     def map_return(self, (task_key, view_key), ((sample_values, feature_matrix), (T, V, D, W, Omega, W0, Omega0, W_t))):
         yield(T, V, D, W, Omega, W_t)
         
     '''
-
+    reduce:
+    ('mvmt', (W, Omega))
+    ->
+    (W, Omega)
     '''
     def reduce_return(self, name_key, (T, V, D, W, Omega, W_t)):
         W = W[0]
