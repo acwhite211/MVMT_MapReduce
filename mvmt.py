@@ -37,22 +37,21 @@ w -> w_t_v : [T x V] : w[t, v] -> [D_v x 1] column vector of weights
 w_t -> w_t : [D x 1] : [D x 1] column vector of weights
 
 Output:
-W -> W_t : [D x T] : weights matrix
+W_t -> W_t : [D x T] : weights matrix
 Omega -> Omega_v : [V] : Omega[v] -> [T x T] similarity matrix
 
 '''
 
 import numpy as np
-from collections import namedtuple
 
 class Reg_MVMT(object):
     def __init__(self, task_views, task_labels, views):
         self.task_views = task_views # {task_key : view_keys}
-        self.tasks = task_labels # {task_key : sample_values}
+        self.task_labels = task_labels # {task_key : sample_values}
         self.views = views # {view_key : feature_matrix}
         
     def run_mvmt(self, iterations=100, lambda_var=.01, mu=0.01, gamma=.01, epsilon=.01):
-        T = len(self.tasks.keys())
+        T = len(self.task_labels.keys())
         V = len(self.views.keys())
         D = sum([x.shape[1] for x in self.views.values()])
         y = {}
@@ -60,29 +59,45 @@ class Reg_MVMT(object):
         U = {}
         I = np.matrix(np.ones((T, V)))
         L = np.matrix((T * V, T * V))
-        W = np.matrix(np.zeros((D, T)))
+        W = np.matrix(np.zeros((T * D, 1)))
+        W_t = np.matrix(np.zeros((D, T)))
+        W_v = np.matrix(np.ones((V, T)))
         Omega = {}
-        xy = namedtuple('xy', ['x', 'y'])
-        xyz = namedtuple('xyz', ['x', 'y', 'z'])
 
         # build y, X, U, and I
-        for (t, v) in [(x, self.views.keys()) for x in self.tasks.keys()]:
-            if v in self.task_views[t]:
-                I[xy(t, v)] = 1
-                X[xy(t, v)] = self.views[v]
-            else:
-                I[xy(t, v)] = 0
-                U[xy(t, v)] = self.views[v]
-            y[t] = np.matrix(self.tasks[t]).T
-
+        for t in self.task_labels.keys():
+            for v in self.views.keys():
+                if v in self.task_views[t]:
+                    I[t, v] = 1
+                else:
+                    I[t, v] = 0
+                
+        # build y, X, and U
+        for t in range(T):
+            for v in range(V):
+                m = self.views[v].tolist()
+                x = []
+                u = []
+                y_t = []
+                for s in range(len(m)):
+                    if self.task_labels[t][s] != 0.0:
+                        x.append(m[s])
+                        y_t.append(self.task_labels[t][s])
+                    else:
+                        u.append(m[s])
+                X[t, v] = np.matrix(x)
+                y[t] = np.matrix(y_t).T
+                U[t, v] = np.matrix(u)
+                    
         # initialize W0
-        W0 = np.matrix(np.zeros((D, T)))
+        W0 = np.matrix(np.zeros((T * D, 1)))
 
         # initialize Omega0
         Omega0 = {}
         for v in range(V):
             I_T = np.matrix(np.identity(T))
             Omega0[v] = (1 / T) * I_T
+            Omega[v] = Omega0[v]
 
         for iteration in range(iterations):
             A = {}
@@ -90,34 +105,36 @@ class Reg_MVMT(object):
             C = {}
             E = {}
 
-            for (t, v) in [(x, self.views.keys()) for x in self.tasks.keys()]:
-                # construct A[t, v]
-                A[t, v] = lambda_var + (mu * (V - 1) * U[t, v].T * U[t, v]) + \
-                          ((X[t, v].T * X[t, v]) / (V ** 2))
-
-                # construct E[t, v]
-                E[t, v] = (X[t, v].T * y[t]) / V
-
-                # construct B[t, v, v']
-                for v2 in range(V):
-                    if v != v2:
-                        B[t, v, v2] = ((X[t, v].T * X[t, v2]) / (V ** 2)) - \
-                                      (mu * U[t, v].T * U[t, v])
-
-                # construct C[t', v]
-                for t2 in range(T):
-                    if t != t2:
-                        I_Dv = np.matrix(np.identity(self.views[v].shape[1]))
-                        C[t2, v] = gamma * Omega[v][t, t2] * I_Dv
+            for t in self.task_labels.keys():
+                for v in self.views.keys():
+                    # construct A[t, v]
+                    A[t, v] = lambda_var + (mu * (V - 1) * U[t, v].T * U[t, v]) + \
+                              ((X[t, v].T * X[t, v]) / (V ** 2))
+    
+                    # construct E[t, v]
+                    E[t, v] = (X[t, v].T * y[t]) / V
+    
+                    # construct B[t, v, v']
+                    for v2 in range(V):
+                        if v != v2:
+                            B[t, v, v2] = ((X[t, v].T * X[t, v2]) / (V ** 2)) - \
+                                          (mu * U[t, v].T * U[t, v2])
+    
+                    # construct C[t', v]
+                    for t2 in range(T):
+                        if t != t2:
+                            I_Dv = np.matrix(np.identity(self.views[v].shape[1]))
+                            C[t2, v] = gamma * Omega[v][t, t2] * I_Dv
 
             # construct L
-            L = np.zeros((T * V, T * V))
+            L = np.zeros((T * D, T * D))
             i_offset = 0
             j_offset = 0
             for t in range(T):
-                for t2 in range(T):
-                    if t == t2:
-                        for v in range(V):
+                row_index = 0
+                for v in range(V):
+                    for t2 in range(T):
+                        if t == t2:
                             for v2 in range(V):
                                 if v == v2:
                                     for i in range(A[t, v].shape[0]):
@@ -129,8 +146,7 @@ class Reg_MVMT(object):
                                         for j in range(B[t, v, v2].shape[1]):
                                             L[i + i_offset, j + j_offset] = B[t, v, v2][i, j]
                                     j_offset += B[t, v, v2].shape[1]
-                    else:
-                        for v in range(V):
+                        else:
                             for v2 in range(V):
                                 if v == v2:
                                     for i in range(C[t, v].shape[0]):
@@ -138,11 +154,11 @@ class Reg_MVMT(object):
                                             L[i + i_offset, j + j_offset] = C[t, v][i, j]
                                     j_offset += C[t, v].shape[1]
                                 else:
-                                    for i in range(C[t, v].shape[0]):
-                                        for j in range(C[t, v].shape[1]):
-                                            L[i + i_offset, j + j_offset] = 0
-                                    j_offset += C[t, v].shape[1]
-                i_offset += B[t, 1, 2].shape[0]
+                                    j_offset += C[t, v2].shape[1]
+                    i_offset += A[t, row_index].shape[0]
+                    j_offset = 0
+                    row_index += 1
+            L = np.matrix(L)
 
             # construct R -> column vector
             R = []
@@ -154,11 +170,11 @@ class Reg_MVMT(object):
             # compute W
             W = L.I * R
 
-            # construct W_v
+            # construct W_v [V x T]
             W_v = []
-            for t in range(T):
-                for v in range(V):
-                    W_v.extend(W[(t, v)].T.tolist()[0])
+            for v in range(V):
+                for t in range(T):
+                    W_v.extend(W_t[t, v].T.tolist()[0])
             W_v = np.matrix(W_v).T
 
             # update Omega[v]
@@ -179,6 +195,11 @@ class Reg_MVMT(object):
                 for v in range(V):
                     Omega0[v] = Omega[v]
 
-        return (W, Omega)
+            # reconstruct W_t
+            W_t = W_t.T.tolist()
+            W_temp = W.T.tolist()[0]
+            for t in range(T):
+                W_t[t] = W_temp[t * D : (t * D) + D]
+            W_t = np.matrix(W_t).T
 
-        
+        return (W_t, Omega)

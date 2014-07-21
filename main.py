@@ -1,5 +1,5 @@
 import numpy as np
-import random
+from random import shuffle
 from mvmt import Reg_MVMT
 
 def test():
@@ -9,9 +9,9 @@ def test():
 
 	tasks = {0 : [0, 1], 1 : [1, 2]}
 	views = {0 : view_0, 1 : view_1, 2 : view_2}
-	task_lables = {0 : [-1.0, 1.0, 0.0], 1 : [1.0, -1.0, 0.0]}
+	task_labels = {0 : [-1.0, 1.0, 0.0], 1 : [1.0, -1.0, 0.0]}
 
-	mvmt = Reg_MVMT(tasks, task_lables, views)
+	mvmt = Reg_MVMT(tasks, task_labels, views)
 	mvmt.run_mvmt()
 
 def read_data(files):
@@ -44,7 +44,7 @@ def learn(tasks, views):
 	for t in tasks.keys():
 		task_lables = 
 
-	for v in range(views_count): 
+	for v in range(views_count):
 		view[v] = 
 
 
