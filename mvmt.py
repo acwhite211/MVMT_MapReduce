@@ -50,7 +50,7 @@ class Reg_MVMT(object):
         self.task_labels = task_labels # {task_key : sample_values}
         self.views = views # {view_key : feature_matrix}
         
-    def run_mvmt(self, iterations=100, lambda_var=.01, mu=0.01, gamma=.01, epsilon=.01):
+    def train(self, iterations=100, lambda_var=.01, mu=0.01, gamma=.01, epsilon=.01):
         T = len(self.task_labels.keys())
         V = len(self.views.keys())
         D = sum([x.shape[1] for x in self.views.values()])
@@ -203,3 +203,4 @@ class Reg_MVMT(object):
             W_t = np.matrix(W_t).T
 
         return (W_t, Omega)
+

@@ -8,10 +8,7 @@ WORD_RE = re.compile(r"[\w']+")
 
 class Load_Files(MRJob):
 
-    OUTPUT_PROTOCOL = mrjob.protocol.RawValueProtocol
-    
-    def __init__(self, files):
-        self.views = files
+    OUTPUT_PROTOCOL = RawValueProtocol
 
     def read_data(self, files):
         views = []
@@ -23,7 +20,11 @@ class Load_Files(MRJob):
         return tuple(views)
 
     def mapper_init(self):
-        views = self.read_data(self.views)
+        files = {0 : '100_leaves_plant_species/data_Mar_64.txt',
+                 1 : '100_leaves_plant_species/data_Sha_64.txt',
+                 2 : '100_leaves_plant_species/data_Tex_64.txt'}
+
+        views = self.read_data(files)
         for view in views:
             for i in range(len(view[0])):
                 yield(view[0][i], (view[1][0], view[1][1][i]))
@@ -41,8 +42,4 @@ class Load_Files(MRJob):
         yield(label, sample)
         
 if __name__ == '__main__':
-    files = {0 : '100_leaves_plant_species/data_Mar_64.txt',
-             1 : '100_leaves_plant_species/data_Sha_64.txt',
-             2 : '100_leaves_plant_species/data_Tex_64.txt'}
-    load_files = Load_Files(files)
-    load_files.run()
+    Load_Files.run()
