@@ -18,10 +18,10 @@ Input:
 y -> y_t : [T] : y[t] -> [N_t x 1] label column vector
 X -> X_t : [T] : X[t] -> [N_v x D_v] labeled feature matrix
 U -> U_t : [T] : U[t] -> [M_v x D_v] unlabeled feature matrix
-lambda ->  
-mu -> 
+lambda ->  regularization parameter
+mu -> regularization parameter
 iterations -> N_it
-epsilson -> 
+epsilson -> regularization parameter
 
 Algorithm:
 W0 -> W_0 :
@@ -43,6 +43,7 @@ Omega -> Omega_v : [V] : Omega[v] -> [T x T] similarity matrix
 '''
 
 import numpy as np
+from collections import namedtuple
 
 class Reg_MVMT(object):
     def __init__(self, task_views, task_labels, views):
@@ -50,7 +51,7 @@ class Reg_MVMT(object):
         self.tasks = task_labels # {task_key : sample_values}
         self.views = views # {view_key : feature_matrix}
         
-    def run_mvmt(self, iterations, lambda_var, mu, gamma, epsilon):
+    def run_mvmt(self, iterations=100, lambda_var=.01, mu=0.01, gamma=.01, epsilon=.01):
         T = len(self.tasks.keys())
         V = len(self.views.keys())
         D = sum([x.shape[1] for x in self.views.values()])
@@ -61,15 +62,17 @@ class Reg_MVMT(object):
         L = np.matrix((T * V, T * V))
         W = np.matrix(np.zeros((D, T)))
         Omega = {}
+        xy = namedtuple('xy', ['x', 'y'])
+        xyz = namedtuple('xyz', ['x', 'y', 'z'])
 
         # build y, X, U, and I
         for (t, v) in [(x, self.views.keys()) for x in self.tasks.keys()]:
             if v in self.task_views[t]:
-                I[t, v] = 1
-                X[t, v] = self.views[v]
+                I[xy(t, v)] = 1
+                X[xy(t, v)] = self.views[v]
             else:
-                I[t, v] = 0
-                U[t, v] = self.views[v]
+                I[xy(t, v)] = 0
+                U[xy(t, v)] = self.views[v]
             y[t] = np.matrix(self.tasks[t]).T
 
         # initialize W0
